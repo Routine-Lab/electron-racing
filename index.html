@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ELECTRON RACING</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#222;font-family:Arial,"Noto Sans KR",sans-serif}
+.app{width:min(1180px,100%);margin:auto;padding:18px}
+.top{display:flex;justify-content:space-between;align-items:end;margin-bottom:10px}
+.brand{font-weight:900;letter-spacing:.08em}
+.sub,.hint{font-size:12px;color:#777}
+.rounds{display:flex;gap:6px;margin-bottom:8px}
+.round{border:1px solid #ddd;background:#fafafa;border-radius:7px;padding:8px 14px;font-weight:700}
+.round.active{background:#222;color:#fff}
+.stage{position:relative;width:100%;border:1px solid #eee;background:#fff}
+canvas{display:block;width:100%;height:auto;background:#fff}
+.overlay{position:absolute;inset:0;background:rgba(255,255,255,.96);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.overlay.hidden{display:none}
+.overlay h1{margin:0 0 7px;font-size:30px}
+.overlay p{margin:0 0 18px;color:#666}
+.characters{display:flex;gap:10px;margin-bottom:16px}
+.character{width:82px;padding:8px;background:#fff;border:1px solid #ddd;border-radius:9px;cursor:pointer}
+.character.active{border:2px solid #222;padding:7px}
+.face{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;margin:auto auto 5px;color:#fff;font-weight:900}
+.sam{background:#ef1c28}.gyeom{background:#3d75c6}.bot{background:#777}
+.character small{font-weight:700}
+.start{border:0;border-radius:8px;background:#222;color:#fff;padding:11px 22px;font-weight:800;cursor:pointer}
+.hud{display:none;display:flex;gap:22px;padding:8px 2px;font-size:13px}
+.hud b{font-size:15px}
+.hint{padding-bottom:10px}
+.dialogue{position:absolute;right:18px;top:18px;width:292px;max-width:292px;min-height:76px;padding:12px 16px 12px 76px;background:rgba(255,255,255,.94);border:2px solid #222;border-radius:14px;box-shadow:0 4px 0 rgba(0,0,0,.08);font-size:17px;font-weight:700;line-height:1.45;opacity:0;transform:translateY(5px);transition:opacity .12s,transform .12s;pointer-events:none;z-index:5}
+.dialogue.show{opacity:1;transform:translateY(0)}
+.dialogue .avatar{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:18px;font-weight:900;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.12)}
+    .dialogue .avatar.sam{background:#ef1c28}.dialogue .avatar.gyeom{background:#3d75c6}.dialogue .avatar.bot{background:#777}
+    .dialogue .avatar.atom{border-radius:8px;background:#f4f4f4;color:#222;border:2px solid #222;font-family:Georgia,serif;font-size:17px;box-shadow:none}
+    .dialogue .speaker{display:block;font-size:12px;color:#777;margin-bottom:4px;font-weight:900;letter-spacing:.04em}
+.dialogue:after{content:"";position:absolute;right:34px;left:auto;bottom:-10px;width:17px;height:17px;background:rgba(255,255,255,.94);border-right:2px solid #222;border-bottom:2px solid #222;transform:rotate(45deg)}
+
+.side-panel{display:none;position:absolute;pointer-events:none;right:14px;bottom:14px;width:150px;padding:9px 10px;background:rgba(255,255,255,.94);border:1px solid #ddd;border-radius:12px;z-index:4;box-shadow:0 3px 10px rgba(0,0,0,.06)}
+.stage.playing .side-panel{display:block}
+.side-title{font-size:9px;font-weight:900;letter-spacing:.08em;color:#888;margin-bottom:6px}
+.side-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.side-card{padding:6px 7px;background:#fafafa;border:1px solid #e5e5e5;border-radius:6px}
+.side-label{font-size:8px;color:#888;font-weight:800;margin-bottom:2px}
+.side-value{font-size:13px;font-weight:900}
+.side-character{margin-top:9px;padding:9px 10px;border-top:1px solid #eee;display:flex;align-items:center;gap:9px}
+.side-character .mini-face{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:900}
+.side-character-text{font-size:12px;color:#777}.side-character-text b{display:block;color:#222;font-size:15px}
+@media(max-width:760px){.side-panel{right:8px;bottom:8px;width:138px}.dialogue{right:10px;top:10px;width:220px;max-width:220px;font-size:14px;padding-left:62px}.dialogue .avatar{left:10px;width:40px;height:40px}.stage{overflow:hidden}}
+.result-value{font-size:12px;font-weight:800;margin:3px 0;color:#555}.result-ohm{font-size:20px;font-weight:900;margin-top:3px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div><div class="brand">ELECTRON RACING</div><div id="subtitle" class="sub">전기 체험존 · ROUND 1 · 저항</div></div>
+    <div class="hint">← → / A D 또는 마우스·터치</div>
+  </div>
+
+  <div class="rounds">
+    <button class="round active" type="button" data-round="1">ROUND 1 · 저항</button>
+    <button class="round" type="button" data-round="2">ROUND 2 · 전압</button>
+    <button class="round" type="button" data-round="3">ROUND 3 · 전류</button>
+  </div>
+
+  <div class="stage">
+    <canvas id="game" width="1100" height="680" tabindex="0"></canvas>
+    <div id="dialogue" class="dialogue" aria-live="polite">
+      <div id="dialogueAvatar" class="avatar sam">S</div>
+      <span id="dialogueSpeaker" class="speaker"></span>
+      <span id="dialogueText"></span>
+    </div>
+    <div class="side-panel" aria-label="실험 상태">
+      <div class="side-title">EXPERIMENT STATUS</div>
+      <div class="side-grid">
+        <div class="side-card"><div class="side-label">남은 시간</div><div id="sideTime" class="side-value">${state.limit.toFixed(1)} s</div></div>
+        <div class="side-card"><div class="side-label">${state.round===3 ? "전하 수" : "충돌"}</div><div id="sideHit" class="side-value">${state.round===3 ? state.currentBalls : state.hits}</div></div>
+      </div>
+    </div>
+    <div id="overlay" class="overlay">
+      <h1 id="overlayTitle">ELECTRON RACING</h1>
+      <p id="overlayText">레이서를 고르고 출발하세요.</p>
+      <div class="characters">
+        <button class="character active" type="button" data-char="sam"><div class="face sam">S</div><small>샘</small></button>
+        <button class="character" type="button" data-char="gyeom"><div class="face gyeom">G</div><small>겸</small></button>
+        <button class="character" type="button" data-char="bot"><div class="face bot">D</div><small>두봇</small></button>
+      </div>
+      <button id="start" class="start" type="button">ROUND 1 시작</button>
+    </div>
+  </div>
+
+  <div class="hud">
+    <span>TIME <b id="time">45.0 s</b></span>
+    <span>거리 <b id="distance">0 m</b></span>
+    <span>충돌 <b id="hit">0</b></span>
+    <span>조건 <b id="condition">은</b></span>
+  </div>
+  <div class="hint">은 15초 → 금 15초 → 구리 15초 · 저항은 정사각형 기둥으로 나타냅니다. · 대사는 플레이를 멈추지 않고 음성과 말풍선으로 등장합니다.</div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+
+  // 처음부터 끝까지 하나의 넓은 도로.
+  const ROAD = { x: 330, w: 440 };
+
+  const characters = {
+    sam:   {name:"샘", mark:"S", color:"#ef1c28"},
+    gyeom: {name:"겸", mark:"G", color:"#3d75c6"},
+    bot:   {name:"두봇", mark:"D", color:"#777"}
+  };
+
+  // 실제 순서: 은 → 금 → 구리, 각 15초.
+  const materials = [
+    {name:"은", color:"#858c93", gap:175},
+    {name:"금", color:"#b08b2d", gap:145},
+    {name:"구리", color:"#8c5b3e", gap:115}
+  ];
+
+  const roundConfigs = {
+    1: {limit:45, subtitle:"전기 체험존 · ROUND 1 · 저항"},
+    2: {limit:20, subtitle:"전기 체험존 · ROUND 2 · 전압"},
+    3: {limit:28, subtitle:"전기 체험존 · ROUND 3 · 전류"}
+  };
+
+  // 플레이를 멈추지 않고 3~4초 간격으로만 개입하는 대사.
+  // TTS 파일은 /audio/ 폴더에 같은 파일명으로 넣으면 된다.
+  const dialogues = [
+    // ROUND 1 · 저항
+    {round:1, time:2.0,  speaker:"은의 원자 빌런", text:"난 은에 있는 원자 빌런이야. 우리와 충돌하면 느려져.", audio:"audio/silver_01.mp3"},
+    {round:1, time:6.0,  speaker:"은의 원자 빌런", text:"우리는 너보다 크고 무거워서 부딪히면 네가 튕겨나가.", audio:"audio/silver_02.mp3"},
+    {round:1, time:10.0, speaker:"은의 원자 빌런", text:"우리와 부딪힐수록 일렉트론레이서의 움직임이 방해받지.", audio:"audio/silver_03.mp3"},
+
+    {round:1, time:17.0, speaker:"금의 원자 빌런", text:"난 금에 있는 원자 빌런이야. 우리는 은보다 더 많아.", audio:"audio/gold_01.mp3"},
+    {round:1, time:21.0, speaker:"금의 원자 빌런", text:"일렉트론레이서의 움직임을 방해하는 우리의 이름을 생각해봐.", audio:"audio/gold_02.mp3"},
+    {round:1, time:25.0, speaker:"금의 원자 빌런", text:"이번에는 얼마나 많은 빌런을 만나게 될까?", audio:"audio/gold_03.mp3"},
+
+    {round:1, time:32.0, speaker:"구리의 원자 빌런", text:"난 구리에 있는 원자 빌런이야. 우리는 은이나 금보다 많아.", audio:"audio/copper_01.mp3"},
+    {round:1, time:36.0, speaker:"구리의 원자 빌런", text:"전하의 움직임을 방해하는 빌런들이 보이지?", audio:"audio/copper_02.mp3"},
+    {round:1, time:40.0, speaker:"구리의 원자 빌런", text:"전하의 움직임을 방해하는 빌런들을 저항이라고 불러.", audio:"audio/copper_03.mp3"},
+
+    // ROUND 2 · 전압 — 부스터가 켜진 뒤, '밀어주는 무언가'의 정체를 생각하게 한다.
+    {round:2, time:11.5, speaker:"구리의 원자 빌런", text:"어? 일렉트론레이서를 밀어주는 무언가가 생겼다.", audio:"audio/voltage_01.mp3"},
+    {round:2, time:15.0, speaker:"구리의 원자 빌런", text:"저 에너지나 압력의 정체가 뭐지?", audio:"audio/voltage_02.mp3"},
+    {round:2, time:18.0, speaker:"구리의 원자 빌런", text:"전하레이서를 빠르게 해주는 전기적인 에너지는 전압이라 부른다.", audio:"audio/voltage_03.mp3"},
+
+    // ROUND 3 · 전류 — 시작 안내만 빌런이 하고, 이후는 탐색과 정의로 진행한다.
+    {round:3, time:0.8, speaker:"구리의 원자 빌런", text:"레이서들이 너무 많아 충돌을 피할 수 없다.", audio:"audio/current_01.mp3"},
+    {round:3, time:3.0, speaker:"구리의 원자 빌런", text:"레이서들이 너무 많으니 메인 레이서를 먼저 찾아.", audio:"audio/current_02.mp3"}
+  ];
+
+  const dialogueEl = document.getElementById("dialogue");
+  const dialogueSpeakerEl = document.getElementById("dialogueSpeaker");
+  const dialogueAvatarEl = document.getElementById("dialogueAvatar");
+  const dialogueTextEl = document.getElementById("dialogueText");
+  let dialogueAudio = null;
+
+  const state = {
+    running:false,
+    selected:"sam",
+    round:1,
+    elapsed:0,
+    limit:45,
+    phaseDistance:0,
+    phaseDistances:[0,0],
+    currentBalls:1,
+    currentPhaseCounts:[0,0],
+    currentFound:[],
+    currentFindCount:0,
+    currentAmp:0,
+    currentSearchPhase:0,
+    currentDefinitionShown:false,
+    currentDefinitionQuestionShown:false,
+    currentSecondFound:[],
+    currentRespawnAt:0,
+    currentSpawnIndex:0,
+    currentNextSpawnAt:0,
+    currentActiveCount:0,
+    distance:0,
+    hits:0,
+    lastTime:0,
+    raf:0,
+    stage:-1,
+    spawnClock:0,
+    obstacles:[],
+    dialogueIndex:-1,
+    dialogueTimer:0
+  };
+
+  const player = {
+    x:W/2,
+    y:H-115,
+    r:22,
+    vx:0
+  };
+
+  const keys = {left:false,right:false};
+  let pointerDown = false;
+
+  function materialIndex(){
+    if(state.round===2) return 2;
+    return Math.min(2, Math.floor(state.elapsed / 15));
+  }
+
+  function material(){
+    return materials[materialIndex()];
+  }
+
+  function voltagePhase(){
+    return state.round===2 && state.elapsed>=10 ? 1 : 0;
+  }
+
+  function currentPhase(){
+    return state.round===3 && state.elapsed>=10 ? 1 : 0;
+  }
+
+  function clearObstacles(){
+    state.obstacles.length = 0;
+  }
+
+  function addObstacle(y){
+    const m = material();
+    const size = 38;
+
+    // 정사각형 기둥. 도로 양 끝을 충분히 남긴다.
+    const x = ROAD.x + size + Math.random() * (ROAD.w - size * 2);
+
+    state.obstacles.push({
+      x, y, size,
+      material:materialIndex()
+    });
+  }
+
+  function seedObstacles(){
+    clearObstacles();
+    for(let i=0;i<5;i++){
+      addObstacle(-130 - i*165 - Math.random()*90);
+    }
+  }
+
+  function reset(){
+    state.limit=roundConfigs[state.round].limit;
+    state.elapsed=0;
+    state.distance=0;
+    state.hits=0;
+    state.phaseDistance=0;
+    state.phaseDistances=[0,0];
+    state.stage=-1;
+    state.spawnClock=0;
+    state.voltagePhase=-1;
+    state.currentPhase=-1;
+    state.currentBalls=1;
+    state.currentPhaseCounts=[0,0];
+    state.currentFound=[];
+    state.currentFindCount=0;
+    state.currentAmp=0;
+    state.currentSearchPhase=0;
+    state.currentDefinitionShown=false;
+    state.currentDefinitionQuestionShown=false;
+    state.currentSecondFound=[];
+    state.currentRespawnAt=0;
+    state.dialogueIndex=-1;
+    state.dialogueTimer=0;
+    hideDialogue();
+    stopDialogueAudio();
+    player.x=W/2;
+    player.y=H-115;
+    player.vx=0;
+    seedObstacles();
+    if(state.round===3) seedCurrentFlow();
+    updateHud();
+    draw();
+  }
+
+  function preparePanel(){
+    const panel=document.querySelector(".side-panel");
+    panel.innerHTML=`
+      <div class="side-title">EXPERIMENT STATUS</div>
+      <div class="side-grid">
+        <div class="side-card"><div class="side-label">남은 시간</div><div id="sideTime" class="side-value">${state.limit.toFixed(1)} s</div></div>
+        <div class="side-card"><div class="side-label">충돌</div><div id="sideHit" class="side-value">0</div></div>
+      </div>`;
+  }
+
+  function startGame(){
+    // 중복 requestAnimationFrame을 완전히 차단.
+    if(state.raf) cancelAnimationFrame(state.raf);
+    state.raf=0;
+
+    reset();
+    document.querySelector(".side-panel").innerHTML = `
+      <div class="side-title">EXPERIMENT STATUS</div>
+      <div class="side-grid">
+        <div class="side-card"><div class="side-label">남은 시간</div><div id="sideTime" class="side-value">${state.limit.toFixed(1)} s</div></div>
+        <div class="side-card"><div class="side-label">${state.round===3 ? "전류" : "충돌"}</div><div id="sideHit" class="side-value">${state.round===3 ? "0 A" : state.hits}</div></div>
+      </div>`;
+    state.running=true;
+    state.lastTime=performance.now();
+
+    document.getElementById("overlay").classList.add("hidden");
+    document.querySelector(".stage").classList.add("playing");
+    canvas.focus();
+
+    state.raf=requestAnimationFrame(loop);
+  }
+
+  function resistanceOhms(hits){
+    // 이 실험에서는 충돌 수를 저항값(Ω)에 대응시킨다.
+    return hits;
+  }
+
+  function finish(){
+    state.running=false;
+    hideDialogue();
+    stopDialogueAudio();
+    if(state.raf){
+      cancelAnimationFrame(state.raf);
+      state.raf=0;
+    }
+
+    document.getElementById("overlayTitle").textContent="ROUND COMPLETE";
+
+    if(state.round===1){
+      document.getElementById("overlayText").textContent=
+        `충돌 수가 저항값입니다 · ${resistanceOhms(state.hits)} Ω`;
+      const panel=document.querySelector(".side-panel");
+      panel.innerHTML=`
+        <div class="side-title">EXPERIMENT RESULT</div>
+        <div class="result-value">충돌 수 = 저항값</div>
+        <div class="result-ohm">${state.hits}회 → ${resistanceOhms(state.hits)} Ω</div>`;
+      document.getElementById("start").textContent="ROUND 1 다시 하기";
+    } else if(state.round===2){
+      const d1=Math.round(state.phaseDistances[0]);
+      const d2=Math.round(state.phaseDistances[1]);
+      document.getElementById("overlayText").textContent=
+        `부스터 전 ${d1} m · 부스터 후 ${d2} m`;
+      const panel=document.querySelector(".side-panel");
+      panel.innerHTML=`
+        <div class="side-title">EXPERIMENT RESULT</div>
+        <div class="result-value">공기 부스터 전 → 후</div>
+        <div class="result-ohm">${d1} m → ${d2} m</div>`;
+      document.getElementById("start").textContent="ROUND 2 다시 하기";
+    } else {
+      document.getElementById("overlayText").textContent=
+        `전하의 흐름 · 샘 1 A · 겸 2 A · 두봇 3 A`;
+      const panel=document.querySelector(".side-panel");
+      panel.innerHTML=`
+        <div class="side-title">EXPERIMENT RESULT</div>
+        <div class="result-value">전하의 흐름 = 전류</div>
+        <div class="result-ohm">샘 1 A · 겸 2 A · 두봇 3 A</div>`;
+      document.getElementById("start").textContent="ROUND 3 다시 하기";
+    }
+
+    document.getElementById("overlay").classList.remove("hidden");
+    document.querySelector(".stage").classList.add("playing");
+  }
+
+  function loop(now){
+    if(!state.running)return;
+
+    const dt=Math.min(0.033, Math.max(0, (now-state.lastTime)/1000));
+    state.lastTime=now;
+    state.elapsed += dt;
+
+    update(dt);
+    draw();
+    updateHud();
+
+    if(state.elapsed >= state.limit){
+      finish();
+      return;
+    }
+
+    state.raf=requestAnimationFrame(loop);
+  }
+
+  // ROUND 3는 실제 6.23×10²³개의 전하를 화면에 하나씩 그리는 것이 아니라,
+  // 그 거대한 수를 대표하는 시각적 입자 흐름으로 표현한다.
+  const AVOGADRO_CHARGES = 6.23e23;
+  const FLOW_PARTICLES = 58;
+  const currentTargets = [
+    {id:"sam", name:"샘", color:"#ef1c28", found:false, active:false, x:0, y:0},
+    {id:"gyeom", name:"겸", color:"#3d75c6", found:false, active:false, x:0, y:0},
+    {id:"bot", name:"두봇", color:"#777", found:false, active:false, x:0, y:0}
+  ];
+  let flowParticles=[];
+
+  function seedCurrentFlow(secondPhase=false){
+    flowParticles=[];
+    for(let i=0;i<FLOW_PARTICLES;i++){
+      flowParticles.push({
+        x: ROAD.x+18+Math.random()*(ROAD.w-36),
+        y: Math.random()*H,
+        r: 2.2+Math.random()*1.8,
+        vx: (Math.random()-.5)*9
+      });
+    }
+
+    // 시작할 때 세 명을 동시에 보여주지 않는다. 순서대로 하나씩 등장한다.
+    currentTargets.forEach(t=>{
+      t.x=ROAD.x+44+Math.random()*(ROAD.w-88);
+      t.y=-40;
+      t.found=false;
+      t.active=false;
+    });
+    state.currentFound=[];
+    state.currentSecondFound=[];
+    state.currentAmp=0;
+    state.currentSpawnIndex=0;
+    state.currentActiveCount=0;
+    // 첫 대사가 끝난 뒤 첫 레이서가 등장한다.
+    state.currentNextSpawnAt=state.round===3 ? state.elapsed+5.2 : state.elapsed;
+  }
+
+  function spawnNextCurrentTarget(){
+    if(state.currentSpawnIndex>=currentTargets.length) return;
+    const t=currentTargets[state.currentSpawnIndex];
+    t.x=ROAD.x+44+Math.random()*(ROAD.w-88);
+    t.y=-34;
+    t.found=false;
+    t.active=true;
+    state.currentActiveCount++;
+    state.currentSpawnIndex++;
+    state.currentNextSpawnAt=state.elapsed+2.6;
+  }
+
+  function updateCurrentFlow(dt){
+    const flowSpeed=170;
+    for(const p of flowParticles){
+      p.y += flowSpeed*dt;
+      p.x += p.vx*dt;
+      if(p.x<ROAD.x+16 || p.x>ROAD.x+ROAD.w-16) p.vx*=-1;
+      if(p.y>H+10){
+        p.y=-10;
+        p.x=ROAD.x+18+Math.random()*(ROAD.w-36);
+      }
+    }
+
+    // 캐릭터는 듬성듬성, 한 명씩 등장한다.
+    if(state.currentSpawnIndex<currentTargets.length && state.elapsed>=state.currentNextSpawnAt){
+      spawnNextCurrentTarget();
+    }
+
+    for(const t of currentTargets){
+      if(!t.active || t.found) continue;
+      t.y += flowSpeed*dt;
+      if(t.y>H+40){
+        // 놓쳤다면 다시 위쪽에서 자연스럽게 흐르게 한다.
+        t.y=-34;
+        t.x=ROAD.x+44+Math.random()*(ROAD.w-88);
+      }
+    }
+  }
+
+  function showCurrentDefinition(){
+    // 질문과 정의를 분리한다. 먼저 학생에게 생각할 시간을 주고,
+    // 잠시 뒤 정의를 별도의 말풍선으로 보여준다.
+    state.currentDefinitionQuestionShown=true;
+    showDialogue({
+      round:3,
+      speaker:"구리의 원자 빌런",
+      text:"이 전하들의 거대한 흐름을 뭐라고 불러야 해?",
+      audio:"audio/current_03.mp3"
+    });
+
+    setTimeout(()=>{
+      if(!state.running || state.round!==3 || !state.currentDefinitionQuestionShown) return;
+      state.currentDefinitionShown=true;
+      showDialogue({
+        round:3,
+        speaker:"구리의 원자 빌런",
+        text:"단위 시간당 단위 면적을 통과한 전하의 양을 전류라고 한다.",
+        audio:"audio/current_04.mp3"
+      });
+      state.currentRespawnAt=state.elapsed+2.4;
+    },2400);
+  }
+
+  function tryFindTarget(x,y){
+    if(state.round!==3 || !state.running) return;
+    let best=null, bestD=Infinity;
+    for(const t of currentTargets){
+      if(t.found || !t.active) continue;
+      const d=Math.hypot(t.x-x,t.y-y);
+      if(d<bestD){best=t;bestD=d;}
+    }
+    // 캐릭터는 작게, 클릭 판정만 조금 넓게 한다.
+    if(best && bestD<30){
+      best.found=true;
+      best.active=false;
+      state.currentActiveCount=Math.max(0,state.currentActiveCount-1);
+      state.currentFound.push(best.id);
+
+      if(state.currentSearchPhase===0){
+        showCurrentFind(best,false);
+        if(state.currentFound.length===3){
+          showCurrentDefinition();
+        }
+      } else {
+        state.currentSecondFound.push(best.id);
+        state.currentAmp=state.currentSecondFound.length;
+        showCurrentFind(best,true);
+        if(state.currentSecondFound.length===3){
+          setTimeout(()=>{ if(state.running) finish(); },900);
+        }
+      }
+    }
+  }
+
+  function showCurrentFind(target,withAmp){
+    dialogueSpeakerEl.textContent="찾았다!";
+    dialogueTextEl.textContent=withAmp
+      ? `${target.name} 발견 · ${state.currentAmp} A`
+      : `${target.name} 발견`;
+    dialogueAvatarEl.textContent=target.id==="bot"?"D":target.name[0];
+    dialogueAvatarEl.className="avatar";
+    dialogueAvatarEl.classList.add(target.id==="sam"?"sam":target.id==="gyeom"?"gyeom":"bot");
+    dialogueEl.classList.add("show");
+    stopDialogueAudio();
+  }
+
+  function update(dt){
+    const stage=materialIndex();
+    const phase=voltagePhase();
+    updateDialogue();
+
+    // ROUND 1은 재료가 바뀔 때, ROUND 2는 10초에 공기 부스터가 켜질 때 새 조건을 적용.
+    if(state.round===1 && stage!==state.stage){
+      state.stage=stage;
+      state.obstacles.length=0;
+      for(let i=0;i<5;i++){
+        addObstacle(-120-i*155-Math.random()*90);
+      }
+    }
+    if(state.round===2 && phase!==state.voltagePhase){
+      state.voltagePhase=phase;
+      state.obstacles.length=0;
+      for(let i=0;i<5;i++){
+        addObstacle(-120-i*155-Math.random()*90);
+      }
+    }
+
+    if(state.round===3){
+      // 첫 번째 찾기 완료 → 전류 정의 → 두 번째 찾기.
+      if(state.currentDefinitionShown && state.currentSearchPhase===0 && state.elapsed>=state.currentRespawnAt){
+        state.currentSearchPhase=1;
+        state.currentFound=[];
+        state.currentSecondFound=[];
+        state.currentAmp=0;
+        seedCurrentFlow(true);
+        state.currentNextSpawnAt=state.elapsed+1.4;
+        hideDialogue();
+      }
+    }
+
+    // 좌우 이동
+    if(keys.left) player.vx -= 1200*dt;
+    if(keys.right) player.vx += 1200*dt;
+
+    player.vx *= Math.pow(0.0005,dt);
+    player.vx = Math.max(-540,Math.min(540,player.vx));
+    player.x += player.vx*dt;
+
+    // 하나의 도로 안에서만 움직임.
+    player.x=Math.max(ROAD.x+player.r,
+      Math.min(ROAD.x+ROAD.w-player.r,player.x));
+
+    // ROUND 2: 10초 후 공기 부스터가 자동 적용되어 같은 구리도선에서 더 빠르게 이동한다.
+    const speed = state.round===2
+      ? (phase===0 ? 245 : 400)
+      : 245 + stage*18;
+    for(const o of state.obstacles)o.y += speed*dt;
+
+    const distanceGain=speed*dt*0.055;
+    state.distance += distanceGain;
+    if(state.round===2) state.phaseDistances[phase] += distanceGain;
+    if(state.round===3) updateCurrentFlow(dt);
+
+    // 아래로 사라진 기둥은 위에 새로 생성.
+    for(let i=state.obstacles.length-1;i>=0;i--){
+      if(state.obstacles[i].y > H+80){
+        state.obstacles.splice(i,1);
+        const highest=state.obstacles.length
+          ? Math.min(...state.obstacles.map(o=>o.y))
+          : -100;
+        addObstacle(highest-145-Math.random()*80);
+      }
+    }
+
+    // 혹시 생성 간격이 부족해져도 화면에 최소 4개 유지.
+    while(state.obstacles.length<4){
+      const highest=state.obstacles.length
+        ? Math.min(...state.obstacles.map(o=>o.y))
+        : -120;
+      addObstacle(highest-150-Math.random()*80);
+    }
+
+    // 충돌: 도로 중앙 아래의 안전 위치로 즉시 복귀.
+    for(const o of state.obstacles){
+      const h=o.size/2;
+      const cx=Math.max(o.x-h,Math.min(player.x,o.x+h));
+      const cy=Math.max(o.y-h,Math.min(player.y,o.y+h));
+      const dx=player.x-cx, dy=player.y-cy;
+
+      if(dx*dx+dy*dy < player.r*player.r){
+        state.hits++;
+        player.x=W/2;
+        player.y=H-115;
+        player.vx=0;
+        // 충돌한 기둥은 제거해서 즉시 재충돌하지 않게 한다.
+        const idx=state.obstacles.indexOf(o);
+        if(idx>=0)state.obstacles.splice(idx,1);
+        break;
+      }
+    }
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+
+    // 흰 배경 + 하나의 좁은 도로.
+    ctx.fillStyle="#fff";
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle="#fafafa";
+    ctx.fillRect(ROAD.x,0,ROAD.w,H);
+    ctx.strokeStyle="#ddd";
+    ctx.lineWidth=2;
+    ctx.strokeRect(ROAD.x,0,ROAD.w,H);
+
+    if(state.round===2 && state.running && voltagePhase()===1){
+      ctx.fillStyle="#e9eef2";
+      ctx.fillRect(ROAD.x+ROAD.w/2-42, H-58, 84, 24);
+      ctx.fillStyle="#222";
+      ctx.font="700 12px Arial,'Noto Sans KR',sans-serif";
+      ctx.textAlign="center";
+      ctx.textBaseline="middle";
+      ctx.fillText("공기 부스터", ROAD.x+ROAD.w/2, H-46);
+    }
+    if(state.round===3 && state.running){
+      ctx.fillStyle="#e9eef2";
+      ctx.fillRect(ROAD.x+ROAD.w/2-74, H-58, 148, 24);
+      ctx.fillStyle="#222";
+      ctx.font="700 12px Arial,'Noto Sans KR',sans-serif";
+      ctx.textAlign="center";
+      ctx.textBaseline="middle";
+      ctx.fillText("6.23 × 10²³개의 전하", ROAD.x+ROAD.w/2, H-46);
+    }
+
+    // 저항 정사각형 기둥
+    for(const o of state.obstacles){
+      const m=materials[o.material];
+      ctx.fillStyle=m.color;
+      ctx.fillRect(o.x-o.size/2,o.y-o.size/2,o.size,o.size);
+    }
+
+    // ROUND 3: 6.23×10²³개의 전하를 대표하는 입자 흐름.
+    if(state.round===3 && state.running){
+      for(const p of flowParticles){
+        ctx.fillStyle="#9aa0a6";
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fill();
+      }
+      for(const t of currentTargets){
+        if(t.found || !t.active) continue;
+        ctx.fillStyle=t.color;
+        ctx.beginPath();
+        ctx.arc(t.x,t.y,12,0,Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle="#fff";
+        ctx.font="900 10px Arial,'Noto Sans KR',sans-serif";
+        ctx.textAlign="center";
+        ctx.textBaseline="middle";
+        ctx.fillText(t.id==="bot"?"D":t.name[0],t.x,t.y);
+      }
+    } else {
+      // 플레이어 전하
+      const ch=characters[state.selected];
+      ctx.fillStyle=ch.color;
+      ctx.beginPath();
+      ctx.arc(player.x,player.y,player.r,0,Math.PI*2);
+      ctx.fill();
+      if(state.selected==="bot"){
+        ctx.fillStyle="#fff";
+        ctx.font="900 17px Arial,sans-serif";
+        ctx.textAlign="center";
+        ctx.textBaseline="middle";
+        ctx.fillText("D",player.x,player.y);
+      }
+      ctx.fillStyle="#222";
+      ctx.font="700 15px Arial,'Noto Sans KR',sans-serif";
+      ctx.textAlign="center";
+      ctx.textBaseline="alphabetic";
+      ctx.fillText(ch.name,player.x,player.y+42);
+    }
+  }
+
+  function stopDialogueAudio(){
+    if(dialogueAudio){
+      dialogueAudio.pause();
+      dialogueAudio.currentTime=0;
+      dialogueAudio=null;
+    }
+  }
+
+  function hideDialogue(){
+    dialogueEl.classList.remove("show");
+  }
+
+  function showDialogue(d){
+    dialogueSpeakerEl.textContent=d.speaker;
+    dialogueTextEl.textContent=d.text;
+
+    const avatarMap = {
+      "은의 원자 빌런": {mark:"Ag"},
+      "금의 원자 빌런": {mark:"Au"},
+      "구리의 원자 빌런": {mark:"Cu"}
+    };
+    const avatar = avatarMap[d.speaker] || avatarMap["은의 원자 빌런"];
+    dialogueAvatarEl.textContent = avatar.mark;
+    dialogueAvatarEl.className = "avatar atom";
+    dialogueEl.classList.add("show");
+
+    // 시작 버튼을 누른 뒤의 게임 안에서 재생하므로 브라우저 autoplay 제한에 걸리지 않는다.
+    stopDialogueAudio();
+    if(d.audio){
+      dialogueAudio=new Audio(d.audio);
+      dialogueAudio.volume=0.9;
+      dialogueAudio.play().catch(()=>{});
+    }
+  }
+
+  function updateDialogue(){
+    const roundDialogues=dialogues.filter(d=>d.round===state.round);
+    const nextIndex=state.dialogueIndex+1;
+    if(nextIndex<roundDialogues.length && state.elapsed>=roundDialogues[nextIndex].time){
+      state.dialogueIndex=nextIndex;
+      state.dialogueTimer=0;
+      showDialogue(roundDialogues[nextIndex]);
+    }
+  }
+
+  function updateHud(){
+    document.getElementById("time").textContent=
+      Math.max(0,state.limit-state.elapsed).toFixed(1)+" s";
+    document.getElementById("distance").textContent=
+      Math.round(state.distance)+" m";
+    document.getElementById("hit").textContent=state.hits;
+    document.getElementById("condition").textContent=material().name;
+    const sideTime=document.getElementById("sideTime");
+    const sideHit=document.getElementById("sideHit");
+    if(sideTime) sideTime.textContent=Math.max(0,state.limit-state.elapsed).toFixed(1)+" s";
+    if(sideHit) sideHit.textContent=state.round===3 ? `${state.currentAmp} A` : state.hits;
+  }
+
+  // 라운드 선택
+  document.querySelectorAll(".round[data-round]").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      if(state.running) return;
+      state.round=Number(btn.dataset.round);
+      document.querySelectorAll(".round[data-round]").forEach(b=>b.classList.toggle("active",b===btn));
+      document.getElementById("subtitle").textContent=roundConfigs[state.round].subtitle;
+      document.getElementById("overlayTitle").textContent=state.round===1?"ELECTRON RACING":"ELECTRON RACING";
+      document.getElementById("overlayText").textContent =
+        state.round===1 ? "레이서를 고르고 출발하세요." :
+        state.round===2 ? "레이서를 고르고 출발하세요. / 구리도선 10초 → 공기 부스터 적용 10초" :
+        "레이서가 너무 많습니다. 샘 · 겸 · 두봇이 나올 때마다 찾아보세요.";
+      document.querySelector(".characters").style.display = state.round===3 ? "none" : "flex";
+      document.getElementById("start").textContent=state.round===3 ? "ROUND 3 시작" : `ROUND ${state.round} 시작`;
+      reset();
+    });
+  });
+
+  // 선택 화면
+  document.querySelectorAll(".character").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      state.selected=btn.dataset.char;
+      document.querySelectorAll(".character")
+        .forEach(b=>b.classList.toggle("active",b===btn));
+      draw();
+    });
+  });
+
+  // 시작 버튼: 클릭마다 반드시 새 게임 시작.
+  document.getElementById("start").addEventListener("click", startGame);
+
+  // ROUND 3는 전하 흐름 속의 샘·겸·두봇을 클릭/터치해서 찾는다.
+  canvas.addEventListener("pointerdown",e=>{
+    if(state.round!==3 || !state.running) return;
+    const rect=canvas.getBoundingClientRect();
+    const x=(e.clientX-rect.left)*(W/rect.width);
+    const y=(e.clientY-rect.top)*(H/rect.height);
+    tryFindTarget(x,y);
+  });
+
+  // 키보드
+  window.addEventListener("keydown",e=>{
+    if(e.key==="ArrowLeft" || e.key.toLowerCase()==="a"){
+      keys.left=true;
+      e.preventDefault();
+    }
+    if(e.key==="ArrowRight" || e.key.toLowerCase()==="d"){
+      keys.right=true;
+      e.preventDefault();
+    }
+  });
+
+  window.addEventListener("keyup",e=>{
+    if(e.key==="ArrowLeft" || e.key.toLowerCase()==="a")keys.left=false;
+    if(e.key==="ArrowRight" || e.key.toLowerCase()==="d")keys.right=false;
+  });
+
+  // 마우스/터치: 화면 좌우 위치를 따라간다.
+  function pointerSteer(clientX){
+    const r=canvas.getBoundingClientRect();
+    const x=(clientX-r.left)*(W/r.width);
+    player.vx=Math.max(-540,Math.min(540,(x-player.x)*8));
+  }
+
+  canvas.addEventListener("pointerdown",e=>{
+    pointerDown=true;
+    canvas.setPointerCapture?.(e.pointerId);
+    pointerSteer(e.clientX);
+  });
+
+  canvas.addEventListener("pointermove",e=>{
+    if(pointerDown)pointerSteer(e.clientX);
+  });
+
+  canvas.addEventListener("pointerup",()=>pointerDown=false);
+  canvas.addEventListener("pointercancel",()=>pointerDown=false);
+
+  // 초기 화면: 실험 시작 전에는 상태창을 숨긴다.
+  document.querySelector(".stage").classList.remove("playing");
+  preparePanel();
+  reset();
+})();
+</script>
+</body>
+</html>
